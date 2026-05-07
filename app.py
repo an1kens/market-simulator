@@ -42,17 +42,22 @@ app.layout = html.Div(style={"backgroundColor": "#0a0a0a", "minHeight": "100vh",
     # run button
     html.Div(html.Button("RUN SIMULATION", id="run-btn", n_clicks=0, style={"backgroundColor": "#00ff88", "color": "#0a0a0a", "border": "none", "padding": "12px 40px", "fontSize": "16px", "fontFamily": "monospace", "fontWeight": "bold", "cursor": "pointer", "borderRadius": "4px"}), style={"textAlign": "center", "marginBottom": "30px"}),
 
+    dcc.Store(id="sim-state"),
+    dcc.Interval(id="interval", interval=50, n_intervals=0, disabled=True),
+
     # price chart
     dcc.Graph(id="price-chart"),
 
     # wealth display
-    html.Div(id="wealth-display", style={"display": "flex", "justifyContent": "center", "gap": "20px", "marginTop": "20px"}),
+   html.Div(id="wealth-display", style={"display": "flex", "justifyContent": "center", "gap": "20px", "marginTop": "20px", "flexWrap": "wrap"}),
 
 ])
 
+# callback 1 — button click initializes simulation state and starts interval
 @app.callback(
-    Output("price-chart", "figure"),
-    Output("wealth-display", "children"),
+    Output("sim-state", "data"),
+    Output("interval", "disabled"),
+    Output("interval", "n_intervals"),
     Input("run-btn", "n_clicks"),
     State("num-traders", "value"),
     State("volatility", "value"),
@@ -62,78 +67,124 @@ app.layout = html.Div(style={"backgroundColor": "#0a0a0a", "minHeight": "100vh",
     State("correlation", "value"),
     prevent_initial_call=True
 )
-def run_simulation(n_clicks, num_traders, volatility, lam, num_rounds, info_noise, correlation):
-    
-    # create traders
-    traders = []
+def initialize_simulation(n_clicks, num_traders, volatility, lam, num_rounds, info_noise, correlation):
+    traders_data = []
     wealth = {}
     for i in range(num_traders):
         if i % 4 == 0:
             perceived_value = np.random.normal(100, info_noise)
-            t = Trader("fundamentalist", true_value=perceived_value)
+            personality = "fundamentalist"
+            true_value = perceived_value
         elif i % 4 == 1:
-            t = Trader("momentum")
+            personality = "momentum"
+            true_value = 100
         elif i % 4 == 2:
-            t = Trader("contrarian")
+            personality = "contrarian"
+            true_value = 100
         else:
-            t = Trader("noise")
-        t.name = f"{t.personality}_{i}"
-        traders.append(t)
-        wealth[t.name] = {"cash": 1000, "shares_a": 0, "shares_b": 0}
+            personality = "noise"
+            true_value = 100
 
-    # starting prices
-    price_a = 100.0
-    price_b = 100.0
-    last_price_a = 100.0
-    last_price_b = 100.0
-    prices_a = [price_a]
-    prices_b = [price_b]
+        name = f"{personality}_{i}"
+        traders_data.append({"name": name, "personality": personality, "true_value": true_value})
+        wealth[name] = {"cash": 1000, "shares_a": 0, "shares_b": 0}
 
-    # main loop
-    for t in range(num_rounds):
-        net_order_a = 0
-        net_order_b = 0
+    state = {
+        "traders": traders_data,
+        "wealth": wealth,
+        "prices_a": [100.0],
+        "prices_b": [100.0],
+        "price_a": 100.0,
+        "price_b": 100.0,
+        "last_price_a": 100.0,
+        "last_price_b": 100.0,
+        "round": 0,
+        "num_rounds": num_rounds,
+        "volatility": volatility,
+        "lam": lam,
+        "correlation": correlation,
+        "done": False
+    }
 
-        for trader in traders:
-            order_a = trader.get_order(price_a, last_price_a)
-            order_b = trader.get_order(price_b, last_price_b)
+    return state, False, 0
 
-            if order_a > 0:
-                max_affordable = wealth[trader.name]["cash"] / 2 / price_a
-                order_a = min(order_a, max_affordable)
-            elif order_a < 0:
-                order_a = max(order_a, -wealth[trader.name]["shares_a"])
 
-            if order_b > 0:
-                max_affordable = wealth[trader.name]["cash"] / 2 / price_b
-                order_b = min(order_b, max_affordable)
-            elif order_b < 0:
-                order_b = max(order_b, -wealth[trader.name]["shares_b"])
+# callback 2 — interval advances simulation one round at a time
+@app.callback(
+    Output("price-chart", "figure"),
+    Output("wealth-display", "children"),
+    Output("sim-state", "data", allow_duplicate=True),
+    Output("interval", "disabled", allow_duplicate=True),
+    Input("interval", "n_intervals"),
+    State("sim-state", "data"),
+    prevent_initial_call=True
+)
+def advance_simulation(n_intervals, state):
+    if state is None or state["done"]:
+        return dash.no_update, dash.no_update, dash.no_update, True
 
-            net_order_a += order_a
-            net_order_b += order_b
-            wealth[trader.name]["cash"] -= order_a * price_a + order_b * price_b
-            wealth[trader.name]["shares_a"] += order_a
-            wealth[trader.name]["shares_b"] += order_b
+    # run one round
+    price_a = state["price_a"]
+    price_b = state["price_b"]
+    last_price_a = state["last_price_a"]
+    last_price_b = state["last_price_b"]
+    wealth = state["wealth"]
+    volatility = state["volatility"]
+    lam = state["lam"]
+    correlation = state["correlation"]
 
-        z1 = np.random.normal(0, 1)
-        z2 = np.random.normal(0, 1)
-        shock_a = volatility * z1
-        shock_b = volatility * (correlation * z1 + np.sqrt(1 - correlation**2) * z2)
+    net_order_a = 0
+    net_order_b = 0
 
-        price_a = np.clip(price_a + lam * net_order_a + shock_a, 1, 500)
-        price_b = np.clip(price_b + lam * net_order_b + shock_b, 1, 500)
+    for td in state["traders"]:
+        t = Trader(td["personality"], td["true_value"])
+        order_a = t.get_order(price_a, last_price_a)
+        order_b = t.get_order(price_b, last_price_b)
 
-        last_price_a = price_a
-        last_price_b = price_b
-        prices_a.append(price_a)
-        prices_b.append(price_b)
+        if order_a > 0:
+            order_a = min(order_a, wealth[td["name"]]["cash"] / 2 / price_a)
+        elif order_a < 0:
+            order_a = max(order_a, -10)
+
+        if order_b > 0:
+            order_b = min(order_b, wealth[td["name"]]["cash"] / 2 / price_b)
+        elif order_b < 0:
+            order_b = max(order_b, -10)
+
+        net_order_a += order_a
+        net_order_b += order_b
+        wealth[td["name"]]["cash"] -= order_a * price_a + order_b * price_b
+        wealth[td["name"]]["shares_a"] += order_a
+        wealth[td["name"]]["shares_b"] += order_b
+
+    z1 = np.random.normal(0, 1)
+    z2 = np.random.normal(0, 1)
+    shock_a = volatility * z1
+    shock_b = volatility * (correlation * z1 + np.sqrt(1 - correlation**2) * z2)
+
+    old_price_a = price_a
+    old_price_b = price_b
+
+    price_a = float(np.clip(price_a + lam * net_order_a + shock_a, 1, 500))
+    price_b = float(np.clip(price_b + lam * net_order_b + shock_b, 1, 500))
+
+    prices_a = state["prices_a"] + [price_a]
+    prices_b = state["prices_b"] + [price_b]
+
+    current_round = state["round"] + 1
+    done = current_round >= state["num_rounds"]
+
+    # update state
+    new_state = {**state, "price_a": price_a, "price_b": price_b,
+                 "last_price_a": old_price_a, "last_price_b": old_price_b,
+                 "prices_a": prices_a, "prices_b": prices_b,
+                 "wealth": wealth, "round": current_round, "done": done}
 
     # build chart
     fig = go.Figure()
     fig.add_trace(go.Scatter(y=prices_a, name="Stock A", line=dict(color="#00ff88")))
     fig.add_trace(go.Scatter(y=prices_b, name="Stock B", line=dict(color="#ff9900")))
-    fig.add_hline(y=100, line_dash="dash", line_color="#00ff88", opacity=0.3, annotation_text="True Value")
+    fig.add_hline(y=100, line_dash="dash", line_color="#00ff88", opacity=0.3)
     fig.update_layout(
         paper_bgcolor="#0a0a0a",
         plot_bgcolor="#111111",
@@ -144,11 +195,11 @@ def run_simulation(n_clicks, num_traders, volatility, lam, num_rounds, info_nois
         margin=dict(l=40, r=40, t=40, b=40)
     )
 
-    # build wealth display
+    # build wealth cards
     final_wealth = {}
-    for trader in traders:
-        total = wealth[trader.name]["cash"] + wealth[trader.name]["shares_a"] * prices_a[-1] + wealth[trader.name]["shares_b"] * prices_b[-1]
-        p = trader.personality
+    for td in new_state["traders"]:
+        total = wealth[td["name"]]["cash"] + wealth[td["name"]]["shares_a"] * price_a + wealth[td["name"]]["shares_b"] * price_b
+        p = td["personality"]
         if p not in final_wealth:
             final_wealth[p] = []
         final_wealth[p].append(total)
@@ -160,10 +211,12 @@ def run_simulation(n_clicks, num_traders, volatility, lam, num_rounds, info_nois
         card = html.Div([
             html.Div(personality.upper(), style={"fontSize": "11px", "color": "#aaa", "marginBottom": "4px"}),
             html.Div(f"${avg:.0f}", style={"fontSize": "24px", "fontWeight": "bold", "color": colors.get(personality, "white")})
-        ], style={"backgroundColor": "#111", "padding": "20px", "borderRadius": "8px", "border": f"1px solid {colors.get(personality, '#333')}", "minWidth": "150px", "textAlign": "center"})
+        ], style={"backgroundColor": "#111", "padding": "20px", "borderRadius": "8px",
+                  "border": f"1px solid {colors.get(personality, '#333')}",
+                  "minWidth": "150px", "textAlign": "center"})
         wealth_cards.append(card)
 
-    return fig, wealth_cards
+    return fig, wealth_cards, new_state, done
 
 if __name__ == "__main__":
     app.run(debug=True)
