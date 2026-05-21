@@ -51,6 +51,90 @@ def dominant_personality(orders):
     return max(orders.items(), key=lambda item: personality_order_magnitude(item[1]))
 
 
+def build_price_figure(prices_a, prices_b, x_max=200, placeholder=False):
+    x = list(range(len(prices_a)))
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=x, y=prices_a, name="Stock A",
+        line=dict(color="#00ff88", width=2),
+        mode="lines+markers" if len(x) == 1 else "lines",
+        marker=dict(size=6),
+    ))
+    fig.add_trace(go.Scatter(
+        x=x, y=prices_b, name="Stock B",
+        line=dict(color="#ff9900", width=2),
+        mode="lines+markers" if len(x) == 1 else "lines",
+        marker=dict(size=6),
+    ))
+    fig.add_hline(y=TRUE_VALUE, line_dash="dash", line_color="#888888", line_width=1, opacity=0.5)
+
+    yaxis = dict(title="Price", gridcolor="#222", zerolinecolor="#222")
+    if placeholder or len(prices_a) <= 1:
+        yaxis["range"] = [70, 130]
+    else:
+        yaxis["autorange"] = True
+
+    fig.update_layout(
+        paper_bgcolor="#0a0a0a",
+        plot_bgcolor="#111111",
+        font=dict(color="white", family="monospace"),
+        xaxis=dict(title="Round", gridcolor="#222", range=[0, x_max]),
+        yaxis=yaxis,
+        legend=dict(bgcolor="#0a0a0a", orientation="h", yanchor="bottom", y=1.02, x=0),
+        margin=dict(l=50, r=30, t=50, b=40),
+        annotations=[
+            dict(
+                x=1,
+                xref="paper",
+                y=TRUE_VALUE,
+                yref="y",
+                text=f"${TRUE_VALUE} true value",
+                showarrow=False,
+                xanchor="right",
+                yanchor="bottom",
+                font=dict(size=11, color="#888888", family="monospace"),
+            )
+        ],
+    )
+
+    if placeholder:
+        fig.add_annotation(
+            text="Click RUN SIMULATION to start",
+            xref="paper",
+            yref="paper",
+            x=0.5,
+            y=0.5,
+            showarrow=False,
+            font=dict(size=14, color="#555555", family="monospace"),
+        )
+
+    return fig
+
+
+CLOSE_BTN_STYLE = {
+    "backgroundColor": "transparent",
+    "color": "#888",
+    "border": "1px solid #444",
+    "padding": "4px 12px",
+    "fontSize": "12px",
+    "fontFamily": "monospace",
+    "cursor": "pointer",
+    "borderRadius": "4px",
+}
+
+
+def click_panel_header(title):
+    return html.Div([
+        html.Div(title, style={"color": "#00ff88", "fontSize": "14px", "fontWeight": "bold"}),
+        html.Button("✕ Close", id="close-panel-btn", n_clicks=0, style=CLOSE_BTN_STYLE),
+    ], style={
+        "display": "flex",
+        "justifyContent": "space-between",
+        "alignItems": "center",
+        "marginBottom": "16px",
+    })
+
+
 # ── Highlights engine ─────────────────────────────────────────
 def build_highlights(history, prices_a, prices_b):
     if not history:
@@ -116,9 +200,9 @@ def build_highlights(history, prices_a, prices_b):
              trend,
              f"Early avg ${early_avg:.2f} → Late avg ${late_avg:.2f}",
              trend_color),
-        card("AVG DEVIATION FROM $100",
+        card("AVG DEVIATION FROM TRUE VALUE",
              f"A: ${avg_deviation_a:.2f} · B: ${avg_deviation_b:.2f}",
-             "Average distance from $100 per stock across all rounds",
+             f"Average distance from ${TRUE_VALUE} true value per stock across all rounds",
              "#ff9900"),
         card("DOMINANT MARKET FORCE",
              dominant.upper(),
@@ -156,7 +240,11 @@ app.layout = html.Div(style={"backgroundColor": "#0a0a0a", "minHeight": "100vh",
     dcc.Store(id="sim-state"),
     dcc.Interval(id="interval", interval=50, n_intervals=0, disabled=True),
 
-    dcc.Graph(id="price-chart"),
+    dcc.Graph(
+        id="price-chart",
+        figure=build_price_figure([TRUE_VALUE], [TRUE_VALUE], placeholder=True),
+        config={"displayModeBar": False},
+    ),
 
     html.Div(id="click-panel", style={"margin": "20px auto", "maxWidth": "900px", "backgroundColor": "#111", "borderRadius": "8px", "padding": "20px", "display": "none"}),
 
@@ -203,6 +291,7 @@ def update_slider_labels(num_traders, volatility, lam, num_rounds, info_noise, c
     Output("click-panel", "children"),
     Output("click-panel", "style"),
     Output("highlights-display", "children"),
+    Output("price-chart", "figure"),
     Input("run-btn", "n_clicks"),
     State("num-traders", "value"),
     State("volatility", "value"),
@@ -251,7 +340,8 @@ def initialize_simulation(n_clicks, num_traders, volatility, lam, num_rounds, in
         "history": []
     }
 
-    return state, False, 0, True, RUN_BTN_DISABLED_STYLE, [], CLICK_PANEL_HIDDEN, []
+    initial_fig = build_price_figure([float(TRUE_VALUE)], [float(TRUE_VALUE)], x_max=num_rounds)
+    return state, False, 0, True, RUN_BTN_DISABLED_STYLE, [], CLICK_PANEL_HIDDEN, [], initial_fig
 
 
 # ── Callback 2: advance one round ─────────────────────────────
@@ -341,21 +431,7 @@ def advance_simulation(n_intervals, state):
                  "wealth": wealth, "round": current_round,
                  "done": done, "history": history}
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(y=prices_a, name="Stock A", line=dict(color="#00ff88")))
-    fig.add_trace(go.Scatter(y=prices_b, name="Stock B", line=dict(color="#ff9900")))
-    fig.add_hline(y=TRUE_VALUE, line_dash="dash", line_color="#00ff88", opacity=0.3,
-                  annotation_text="A fair value", annotation_position="right")
-    fig.add_hline(y=TRUE_VALUE, line_dash="dot", line_color="#ff9900", opacity=0.3,
-                  annotation_text="B fair value", annotation_position="left")
-    fig.update_layout(
-        paper_bgcolor="#0a0a0a", plot_bgcolor="#111111",
-        font=dict(color="white", family="monospace"),
-        xaxis=dict(title="Round", gridcolor="#222"),
-        yaxis=dict(title="Price", gridcolor="#222"),
-        legend=dict(bgcolor="#0a0a0a"),
-        margin=dict(l=40, r=40, t=40, b=40)
-    )
+    fig = build_price_figure(prices_a, prices_b, x_max=state["num_rounds"])
 
     final_wealth = {}
     for td in new_state["traders"]:
@@ -432,7 +508,7 @@ def explain_round(clickData, state):
     )
 
     panel_content = [
-        html.Div(f"ROUND {clicked_round} ANALYSIS", style={"color": "#00ff88", "fontSize": "14px", "marginBottom": "16px", "fontWeight": "bold"}),
+        click_panel_header(f"ROUND {clicked_round} ANALYSIS"),
 
         html.Div(style={"display": "flex", "gap": "30px", "marginBottom": "16px", "flexWrap": "wrap"}, children=[
             html.Div([
@@ -480,6 +556,18 @@ def explain_round(clickData, state):
     }
 
     return panel_content, panel_style
+
+
+@app.callback(
+    Output("click-panel", "children", allow_duplicate=True),
+    Output("click-panel", "style", allow_duplicate=True),
+    Input("close-panel-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
+def close_click_panel(n_clicks):
+    if not n_clicks:
+        return dash.no_update, dash.no_update
+    return [], CLICK_PANEL_HIDDEN
 
 
 if __name__ == "__main__":

@@ -110,12 +110,14 @@ python app.py
 Go to `http://127.0.0.1:8050`
 
 **5. Use the simulator**
+- The chart starts with a dark preview at $100 (both stocks) before you run — same styling as the live simulation
 - Adjust the sliders to configure market parameters (labels show current values)
 - Click **RUN SIMULATION** to start (button is disabled while a run is in progress)
-- Watch the price chart animate in real time
+- Watch the price chart animate in real time; a dashed line marks the $100 **true value** anchor
 - Observe the wealth cards to see which trader type is winning
 - When the run finishes, scroll down for **Simulation Highlights** (biggest moves, divergence, dominant force, etc.)
 - **Click any point on the chart** after a run to open a round-by-round breakdown of prices, shocks, and trader activity
+- Click **✕ Close** on that panel to dismiss it
 
 ### Development mode
 
