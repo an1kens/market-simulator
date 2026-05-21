@@ -47,6 +47,10 @@ allowing clean exploration of diversification effects.
 
 ## Key findings
 
+> **Note:** The observations below are qualitative takeaways from
+> experimenting with the simulator. They are not computed or exported
+> automatically — outcomes depend heavily on slider settings and random seed.
+
 - Fundamentalists outperform in most market conditions — knowing
   roughly what something is worth beats every other strategy long term
 - Momentum traders lose systematically in mean-reverting markets —
@@ -89,7 +93,7 @@ cd market-simulator
 
 **2. Install dependencies**
 ```bash
-pip install dash plotly numpy
+pip install -r requirements.txt
 ```
 
 > On Mac you may need to use `pip3` instead of `pip`
@@ -106,10 +110,20 @@ python app.py
 Go to `http://127.0.0.1:8050`
 
 **5. Use the simulator**
-- Adjust the sliders to configure market parameters
-- Click **RUN SIMULATION** to start
+- Adjust the sliders to configure market parameters (labels show current values)
+- Click **RUN SIMULATION** to start (button is disabled while a run is in progress)
 - Watch the price chart animate in real time
 - Observe the wealth cards to see which trader type is winning
+- When the run finishes, scroll down for **Simulation Highlights** (biggest moves, divergence, dominant force, etc.)
+- **Click any point on the chart** after a run to open a round-by-round breakdown of prices, shocks, and trader activity
+
+### Development mode
+
+To enable Dash hot-reload and debug tooling:
+
+```bash
+DASH_DEBUG=true python app.py
+```
 
 ### Troubleshooting
 
