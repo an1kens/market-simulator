@@ -71,6 +71,19 @@ allowing clean exploration of diversification effects.
 - Information asymmetry (noise in fundamentalists' true value estimate)
 - Correlation between the two assets
 
+## Project structure
+
+```
+market_simulator/
+├── app.py              # Dash app and simulation logic
+├── requirements.txt
+├── tests/
+│   └── test_core.py    # Core logic smoke tests
+└── README.md
+```
+
+Local-only (not in git): `venv/`, `__pycache__/`
+
 ## Tech stack
 
 - Python 3
@@ -118,6 +131,14 @@ Go to `http://127.0.0.1:8050`
 - When the run finishes, scroll down for **Simulation Highlights** (biggest moves, divergence, dominant force, etc.)
 - **Click any point on the chart** after a run to open a round-by-round breakdown of prices, shocks, and trader activity
 - Click **✕ Close** on that panel to dismiss it
+
+### Run tests
+
+From the project root:
+
+```bash
+python3 tests/test_core.py
+```
 
 ### Development mode
 

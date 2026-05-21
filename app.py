@@ -136,7 +136,7 @@ def click_panel_header(title):
 
 
 # ── Highlights engine ─────────────────────────────────────────
-def build_highlights(history, prices_a, prices_b):
+def build_highlights(history, prices_a):
     if not history:
         return []
 
@@ -451,7 +451,7 @@ def advance_simulation(n_intervals, state):
                   "border": f"1px solid {COLORS.get(personality, '#333')}",
                   "minWidth": "150px", "textAlign": "center"}))
 
-    highlights = build_highlights(history, prices_a, prices_b) if done else dash.no_update
+    highlights = build_highlights(history, prices_a) if done else dash.no_update
     run_disabled = not done
     run_style = RUN_BTN_DISABLED_STYLE if run_disabled else RUN_BTN_STYLE
 
